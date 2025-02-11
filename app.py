@@ -106,4 +106,5 @@ def predict():
     })
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Running the app on host 0.0.0.0 to make it accessible from outside
+    app.run(host='0.0.0.0', port=80, debug=True)
