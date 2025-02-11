@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'services/binance_service.dart';
+import 'login_screen.dart';
+import 'dart:async'; // Import for Timer
+import 'package:fl_chart/fl_chart.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const CryptoEngineApp());
 }
 
 class CryptoEngineApp extends StatelessWidget {
-  const CryptoEngineApp({super.key});
+  const CryptoEngineApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -13,72 +19,118 @@ class CryptoEngineApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Crypto Engine',
       theme: ThemeData.dark(),
-      home: const HomeScreen(),
+      home: const LoginScreen(),
     );
   }
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({Key? key}) : super(key: key);
 
   @override
   _HomeScreenState createState() => _HomeScreenState();
 }
 
+
 class _HomeScreenState extends State<HomeScreen> {
   final List<Map<String, String>> cryptoList = [
-    {"name": "Bitcoin", "symbol": "BTC", "price": "\$94,916.11", "change": "+2.5%"},
-    {"name": "Ethereum", "symbol": "ETH", "price": "\$3,559.40", "change": "-1.8%"},
-    {"name": "Litecoin", "symbol": "LTC", "price": "\$94.82", "change": "-0.5%"},
-    {"name": "Solana", "symbol": "SOL", "price": "\$236.4", "change": "+1.2%"},
-    {"name": "Cardano", "symbol": "ADA", "price": "\$1.00", "change": "−0.012%"},
+    {"name": "Bitcoin", "symbol": "BTC", "price": "Loading...", "change": "0.00%", "logo": "assets/logos/btc.png"},
+    {"name": "Ethereum", "symbol": "ETH", "price": "Loading...", "change": "0.00%", "logo": "assets/logos/eth.png"},
+    {"name": "Solana", "symbol": "SOL", "price": "Loading...", "change": "0.00%", "logo": "assets/logos/sol.jpeg"},
   ];
-  final List<Map<String, String>> chatHistory = [];
-  final TextEditingController _chatController = TextEditingController();
-  String chatbotMessage = "How can CryptoBot help you?";
+
+  bool isLoading = false;
+  Timer? _timer; // Timer for auto-updating
+
+  @override
+  void initState() {
+    super.initState();
+    fetchPrices(); // Fetch immediately on launch
+    _startAutoUpdate(); // Start automatic refresh every 30 seconds
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel(); // Stop timer when widget is disposed
+    super.dispose();
+  }
+
+  // Function to fetch live prices from Binance API
+  Future<void> fetchPrices() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      for (int i = 0; i < cryptoList.length; i++) {
+        String symbol = cryptoList[i]["symbol"] ?? "";
+
+        // Fetch price and change from Binance
+        Map<String, dynamic> data = await BinanceService.fetchPrice(symbol);
+        double price = data["price"] ?? 0.0;
+        double change = data["change"] ?? 0.0;
+
+        setState(() {
+          cryptoList[i]["price"] = '\$${price.toStringAsFixed(2)}';
+          cryptoList[i]["change"] = '${change.toStringAsFixed(2)}%';
+        });
+      }
+    } catch (e) {
+      print("Error fetching prices: $e");
+    }
+
+    setState(() {
+      isLoading = false;
+    });
+  }
+
+  // Automatically refresh prices every 30 seconds
+  void _startAutoUpdate() {
+    _timer = Timer.periodic(const Duration(seconds: 30), (Timer t) {
+      fetchPrices();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Crypto Engine'),
-actions: [
-  // Search Icon
-  IconButton(
-    icon: const Icon(Icons.search),
-    onPressed: () {
-      // Placeholder for search functionality
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Search coming soon!')),
-      );
-    },
-  ),
-  // Settings Icon
-IconButton(
-  icon: const Icon(Icons.settings),
-  onPressed: () {
-    // Navigate to Settings Page
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const SettingsPage()),
-    );
-  },
-),
-  // Profile Icon
-  IconButton(
-    icon: const CircleAvatar(
-      backgroundColor: Colors.grey,
-      child: Icon(Icons.person, color: Colors.white),
-    ),
-    onPressed: () {
-      // Navigate to the Profile Page
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const ProfilePage()),
-      );
-    },
-  ),
-],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Search coming soon!')),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: fetchPrices, // Manual refresh button
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AccountSettingsPage()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const CircleAvatar(
+              backgroundColor: Colors.grey,
+              child: Icon(Icons.person, color: Colors.white),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ProfilePage()),
+              );
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -86,34 +138,60 @@ IconButton(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Real-Time Prices',
+              'Real-Time Prices ',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            // List of Cryptocurrencies
-            Expanded(
-              child: ListView.builder(
-                itemCount: cryptoList.length,
-                itemBuilder: (context, index) {
-                  final crypto = cryptoList[index];
-                  return Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.currency_bitcoin, color: Colors.amber),
-                      title: Text('${crypto["name"]} (${crypto["symbol"]})'),
-                      subtitle: Text('Price: ${crypto["price"]}'),
-                      trailing: Text(
-                        '${crypto["change"]}',
-                        style: TextStyle(
-                          color: crypto["change"]!.startsWith('+') ? Colors.green : Colors.red,
-                        ),
-                      ),
-                    ),
-                  );
-                },
+            isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Expanded(
+                    child: ListView.builder(
+  itemCount: cryptoList.length,
+  itemBuilder: (context, index) {
+    final crypto = cryptoList[index];
+    // Correctly parse priceChange
+    double priceChange = double.tryParse(
+      crypto["change"]?.replaceAll('%', '').trim() ?? "0.0",
+    ) ?? 0.0;
+
+    return Card(
+      child: ListTile(
+        leading: crypto["logo"] != null && crypto["logo"]!.isNotEmpty
+            ? Image.asset(
+                crypto["logo"]!,
+                width: 40,
+                height: 40,
+                errorBuilder: (context, error, stackTrace) =>
+                    const Icon(Icons.currency_bitcoin, color: Colors.amber),
+              )
+            : const Icon(Icons.currency_bitcoin, color: Colors.amber),
+        title: Text('${crypto["name"] ?? "Unknown"} (${crypto["symbol"] ?? "N/A"})'),
+        subtitle: Text('Price: ${crypto["price"] ?? "Loading..."}'),
+        trailing: Text(
+          crypto["change"] ?? "0.00%",
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: priceChange >= 0 ? Colors.green : Colors.red,
+          ),
+        ),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CoinDetailsScreen(
+                name: crypto["name"]!,
+                symbol: crypto["symbol"]!,
+                logo: crypto["logo"]!,
               ),
             ),
+          );
+        },
+      ),
+    );
+  },
+),
+                  ),
             const SizedBox(height: 20),
-            // Navigation Buttons for Reports and Predictions
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -138,104 +216,24 @@ IconButton(
               ],
             ),
             const SizedBox(height: 20),
-           Expanded(
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Text(
-        'Chatbot',
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 10),
-      // Chat messages displayed here
-      Expanded(
-        child: ListView.builder(
-          itemCount: chatHistory.length,
-          itemBuilder: (context, index) {
-            final message = chatHistory[index];
-            final isUser = message['sender'] == 'user';
-            return Align(
-              alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 5.0),
-                padding: const EdgeInsets.all(12.0),
-                decoration: BoxDecoration(
-                  color: isUser ? Colors.blue : Colors.grey.shade800,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(12.0),
-                    topRight: const Radius.circular(12.0),
-                    bottomLeft: isUser
-                        ? const Radius.circular(12.0)
-                        : const Radius.circular(0),
-                    bottomRight: isUser
-                        ? const Radius.circular(0)
-                        : const Radius.circular(12.0),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: const InputDecoration(
+                      hintText: "Enter your query...",
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
-                child: Text(
-                  message['message']!,
-                  style: const TextStyle(color: Colors.white),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: () {
+                    // Placeholder for sending a query
+                  },
+                  child: const Icon(Icons.send),
                 ),
-              ),
-            );
-          },
-        ),
-      ),
-      const SizedBox(height: 10),
-      // Chat input field
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _chatController,
-              decoration: const InputDecoration(
-                hintText: "Enter your query...",
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          ElevatedButton(
-            onPressed: () {
-              if (_chatController.text.isNotEmpty) {
-                setState(() {
-                  // Add user message to chat history
-                  chatHistory.add({
-                    'sender': 'user',
-                    'message': _chatController.text,
-                  });
-
-                  // Add bot response
-                  chatHistory.add({
-                    'sender': 'bot',
-                    'message':
-                        "I'm learning! You asked: ${_chatController.text}",
-                  });
-
-                  _chatController.clear();
-                });
-              }
-            },
-            child: const Icon(Icons.send),
-          ),
-        ],
-      ),
-    ],
-  ),
-),
-
-            const SizedBox(height: 20),
-            // Display chatbot message
-            Container(
-              padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                color: Colors.blueGrey.shade800,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                chatbotMessage,
-                style: const TextStyle(color: Colors.white),
-              ),
+              ],
             ),
           ],
         ),
@@ -245,7 +243,7 @@ IconButton(
 }
 
 class ReportsScreen extends StatelessWidget {
-  const ReportsScreen({super.key});
+  const ReportsScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -264,26 +262,338 @@ class ReportsScreen extends StatelessWidget {
 }
 
 class PredictionsScreen extends StatelessWidget {
-  const PredictionsScreen({super.key});
+  const PredictionsScreen({Key? key}) : super(key: key);
+
+  final List<Map<String, String>> cryptoList = const [
+    {"name": "Bitcoin", "symbol": "BTC", "logo": "assets/logos/btc.png"},
+    {"name": "Ethereum", "symbol": "ETH", "logo": "assets/logos/eth.png"},
+    {"name": "Solana", "symbol": "SOL", "logo": "assets/logos/sol.jpeg"},
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Crypto Predictions'),
+      appBar: AppBar(title: const Text('Select a Coin for Prediction')),
+      body: ListView.builder(
+        itemCount: cryptoList.length,
+        itemBuilder: (context, index) {
+          final crypto = cryptoList[index];
+
+          return Card(
+            child: ListTile(
+              leading: crypto["logo"] != null && crypto["logo"]!.isNotEmpty
+                  ? Image.asset(
+                      crypto["logo"]!,
+                      width: 40,
+                      height: 40,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.currency_bitcoin, color: Colors.amber),
+                    )
+                  : const Icon(Icons.currency_bitcoin, color: Colors.amber),
+              title: Text('${crypto["name"]} (${crypto["symbol"]})'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SelectPredictionTimeScreen(
+                      name: crypto["name"]!,
+                      symbol: crypto["symbol"]!,
+                      logo: crypto["logo"]!,
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
       ),
-      body: const Center(
-        child: Text(
-          'Here are the Crypto Predictions.',
-          style: TextStyle(fontSize: 24),
+    );
+  }
+}
+
+class SelectPredictionTimeScreen extends StatefulWidget {
+  final String name;
+  final String symbol;
+  final String logo;
+
+  const SelectPredictionTimeScreen({
+    Key? key,
+    required this.name,
+    required this.symbol,
+    required this.logo,
+  }) : super(key: key);
+
+  @override
+  _SelectPredictionTimeScreenState createState() => _SelectPredictionTimeScreenState();
+}
+
+class _SelectPredictionTimeScreenState extends State<SelectPredictionTimeScreen> {
+  String selectedTimePeriod = "";
+
+  final List<Map<String, dynamic>> timePeriods = [
+    {"label": "10 Minutes", "value": "10min"},
+    {"label": "3 Hours", "value": "3hrs"},
+    {"label": "24 Hours", "value": "24hrs"},
+    {"label": "7 Days", "value": "7days"},
+    {"label": "1 Month", "value": "1month"},
+  ];
+
+  void selectTimePeriod(String period) {
+  setState(() {
+    selectedTimePeriod = period;
+  });
+
+  // Show confirmation before proceeding
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text("Confirm Selection"),
+        content: Text(
+          "You selected:\n\n"
+          "• Coin: ${widget.name} (${widget.symbol})\n"
+          "• Time Period: $selectedTimePeriod\n\n"
+          "Proceed to prediction?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), // Cancel
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              proceedToPrediction();
+            },
+            child: const Text("Confirm"),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+void proceedToPrediction() {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => PredictionResultsScreen(
+        name: widget.name,
+        symbol: widget.symbol,
+        logo: widget.logo,
+        timePeriod: selectedTimePeriod,
+      ),
+    ),
+  );
+}
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Select Time Period for ${widget.name} Prediction')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Image.asset(
+              widget.logo,
+              width: 80,
+              height: 80,
+              errorBuilder: (context, error, stackTrace) =>
+                  const Icon(Icons.currency_bitcoin, size: 80, color: Colors.amber),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              "Choose a time period for prediction",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: ListView.builder(
+                itemCount: timePeriods.length,
+                itemBuilder: (context, index) {
+                  final timePeriod = timePeriods[index];
+
+                  return Card(
+                    child: ListTile(
+                      title: Text(timePeriod["label"]),
+                      trailing: selectedTimePeriod == timePeriod["value"]
+                          ? const Icon(Icons.check_circle, color: Colors.green)
+                          : null,
+                      onTap: () {
+                        selectTimePeriod(timePeriod["value"]);
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
+class PredictionResultsScreen extends StatefulWidget {
+  final String name;
+  final String symbol;
+  final String logo;
+  final String timePeriod;
+
+  const PredictionResultsScreen({
+    Key? key,
+    required this.name,
+    required this.symbol,
+    required this.logo,
+    required this.timePeriod,
+  }) : super(key: key);
+
+  @override
+  _PredictionResultsScreenState createState() => _PredictionResultsScreenState();
+}
+
+class _PredictionResultsScreenState extends State<PredictionResultsScreen> {
+  double currentPrice = 0.0;
+  double predictedPrice = 0.0;
+  bool isLoading = true;
+
+  // ✅ Change this to the actual local IP of the PC running Flask
+  final String apiUrl = "http://127.0.0.1:5001/predict"; // Replace with actual IP
+
+  @override
+  void initState() {
+    super.initState();
+    fetchPrediction();
+  }
+
+Future<void> fetchPrediction() async {
+  setState(() {
+    isLoading = true;
+  });
+
+  try {
+    final Map<String, dynamic> requestBody = {
+      "coin": widget.symbol,
+      "time_period": widget.timePeriod,
+    };
+
+    print("📡 Sending request to API: $requestBody"); // Debugging
+
+    // Call your Flask API to get the predicted price
+    final response = await http.post(
+      Uri.parse(apiUrl),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(requestBody),
+    );
+
+    print("📡 Response received: ${response.statusCode}"); // Debugging
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      print("📡 API Data: $data"); // Debugging
+
+      // Now fetch the current price from Binance
+      final binanceData = await BinanceService.fetchPrice(widget.symbol);
+      double currentPriceFetched = binanceData["price"] ?? 0.0;
+
+      setState(() {
+        predictedPrice = data["predicted_price"];
+        currentPrice = currentPriceFetched;
+        isLoading = false;
+      });
+    } else {
+      throw Exception("Failed to fetch prediction");
+    }
+  } catch (e) {
+    print("🚨 Error fetching prediction: $e");
+    setState(() {
+      isLoading = false;
+    });
+  }
+}
+
+
+
+  double calculatePercentageChange() {
+    if (currentPrice == 0) return 0.0;
+    return ((predictedPrice - currentPrice) / currentPrice) * 100;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double percentageChange = calculatePercentageChange();
+    return Scaffold(
+      appBar: AppBar(title: Text('Prediction for ${widget.name}')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      widget.logo,
+                      width: 80,
+                      height: 80,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.currency_bitcoin, size: 80, color: Colors.amber),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      "${widget.name} (${widget.symbol})",
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      "Time Period: ${widget.timePeriod}",
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      "Current Price: \$${currentPrice.toStringAsFixed(2)}",
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      "Predicted Price: \$${predictedPrice.toStringAsFixed(2)}",
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      "Change: ${percentageChange.toStringAsFixed(2)}%",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: percentageChange >= 0 ? Colors.green : Colors.red,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 30),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text("Go Back"),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+
 class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
+  const ProfilePage({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -316,31 +626,31 @@ class ProfilePage extends StatelessWidget {
             const SizedBox(height: 20),
 
             // Additional Information
-            const Card(
+            Card(
               elevation: 2,
-              margin: EdgeInsets.symmetric(vertical: 10),
+              margin: const EdgeInsets.symmetric(vertical: 10),
               child: ListTile(
-                leading: Icon(Icons.pie_chart, color: Colors.amber),
-                title: Text('Total Portfolio Value'),
-                trailing: Text('\$15,230.7', style: TextStyle(fontWeight: FontWeight.bold)),
+                leading: const Icon(Icons.pie_chart, color: Colors.amber),
+                title: const Text('Total Portfolio Value'),
+                trailing: const Text('\$15,230.7', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
-            const Card(
+            Card(
               elevation: 2,
-              margin: EdgeInsets.symmetric(vertical: 10),
+              margin: const EdgeInsets.symmetric(vertical: 10),
               child: ListTile(
-                leading: Icon(Icons.swap_vert, color: Colors.blue),
-                title: Text('Total Trades'),
-                trailing: Text('12', style: TextStyle(fontWeight: FontWeight.bold)),
+                leading: const Icon(Icons.swap_vert, color: Colors.blue),
+                title: const Text('Total Trades'),
+                trailing: const Text('12', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
-            const Card(
+            Card(
               elevation: 2,
-              margin: EdgeInsets.symmetric(vertical: 10),
+              margin: const EdgeInsets.symmetric(vertical: 10),
               child: ListTile(
-                leading: Icon(Icons.show_chart, color: Colors.green),
-                title: Text('Successful Predictions'),
-                trailing: Text('781', style: TextStyle(fontWeight: FontWeight.bold)),
+                leading: const Icon(Icons.show_chart, color: Colors.green),
+                title: const Text('Successful Predictions'),
+                trailing: const Text('781', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
             const Spacer(),
@@ -367,7 +677,7 @@ class ProfilePage extends StatelessWidget {
 
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -390,18 +700,17 @@ class SettingsPage extends StatelessWidget {
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 20),
-          ListTile(
-  leading: const Icon(Icons.person),
-  title: const Text('Account Settings'),
-  subtitle: const Text('Manage profile details and email'),
-  onTap: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const AccountSettingsPage()),
-    );
-  },
-),
-
+ ListTile(
+            leading: const Icon(Icons.person),
+            title: const Text('Account Settings'),
+            subtitle: const Text('Manage profile details and email'),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => AccountSettingsPage()),
+              );
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.account_balance_wallet),
             title: const Text('Manage Wallets'),
@@ -447,9 +756,9 @@ class SettingsPage extends StatelessWidget {
             title: const Text('Notification Settings'),
             subtitle: const Text('Customize notifications and alerts'),
             onTap: () {
-              // Notification Settings Placeholder
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Notification Settings coming soon!')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => NotificationSettingsPage()),
               );
             },
           ),
@@ -527,9 +836,6 @@ class SettingsPage extends StatelessWidget {
     );
   }
 }
-
-
-
 class AccountSettingsPage extends StatelessWidget {
   const AccountSettingsPage({super.key});
 
@@ -1141,6 +1447,213 @@ class DeleteAccountPage extends StatelessWidget {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class CoinDetailsScreen extends StatefulWidget {
+  final String name;
+  final String symbol;
+  final String logo;
+
+  const CoinDetailsScreen({
+    Key? key,
+    required this.name,
+    required this.symbol,
+    required this.logo,
+  }) : super(key: key);
+
+  @override
+  _CoinDetailsScreenState createState() => _CoinDetailsScreenState();
+}
+
+class _CoinDetailsScreenState extends State<CoinDetailsScreen> {
+  double price = 0.0;
+  double priceChange = 0.0;
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchData();
+  }
+
+  Future<void> fetchData() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    // Fetch current price and 24h change
+    final data = await BinanceService.fetchPrice(widget.symbol);
+    setState(() {
+      price = data["price"];
+      priceChange = data["change"];
+      isLoading = false;
+    });
+  }
+
+  Widget _buildPriceChart() {
+  return FutureBuilder<List<FlSpot>>(
+    future: BinanceService.fetchPriceHistory(widget.symbol), // Fetch historical data
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+        return const Center(
+          child: Text(
+            'Failed to load data',
+            style: TextStyle(color: Colors.red),
+          ),
+        );
+      }
+
+      final spots = snapshot.data!;
+
+      // Calculate min and max values dynamically
+      double minY = spots.map((s) => s.y).reduce((a, b) => a < b ? a : b);
+      double maxY = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+
+      // Add padding to the Y-axis range to avoid overflow
+      double padding = (maxY - minY) * 0.05; // 5% padding
+      minY = minY - padding;
+      maxY = maxY + padding;
+
+      // Determine suitable interval for Y-axis labels
+      double yInterval = (maxY - minY) / 6; // 6 labels max
+
+      return LineChart(
+        LineChartData(
+          minY: minY,
+          maxY: maxY,
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: true,
+            horizontalInterval: yInterval,
+            verticalInterval: 1,
+            getDrawingHorizontalLine: (value) => FlLine(
+              color: Colors.grey.withOpacity(0.5),
+              strokeWidth: 1,
+            ),
+            getDrawingVerticalLine: (value) => FlLine(
+              color: Colors.grey.withOpacity(0.5),
+              strokeWidth: 1,
+            ),
+          ),
+          titlesData: FlTitlesData(
+            show: true,
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                interval: 1,
+                getTitlesWidget: (value, meta) {
+                  final intervals = ['0h', '4h', '8h', '12h', '16h', '20h', '24h'];
+                  if (value.toInt() >= 0 && value.toInt() < intervals.length) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        intervals[value.toInt()],
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    );
+                  }
+                  return const SizedBox();
+                },
+              ),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                interval: yInterval,
+                reservedSize: 40, // Prevent overlap
+                getTitlesWidget: (value, meta) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 5),
+                    child: Text(
+                      '\$${(value / 1000).toStringAsFixed(1)}K', // Format values in 'K' notation
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          borderData: FlBorderData(
+            show: true,
+            border: Border.all(color: Colors.grey, width: 1),
+          ),
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots, // Use dynamic data
+              isCurved: true,
+              color: Colors.orange,
+              barWidth: 4,
+              isStrokeCapRound: true,
+              belowBarData: BarAreaData(
+                show: true,
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.orange.withOpacity(0.3),
+                    Colors.deepOrange.withOpacity(0.1),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              dotData: FlDotData(
+                show: true,
+                checkToShowDot: (spot, barData) => true,
+                getDotPainter: (spot, percent, barData, index) {
+                  return FlDotCirclePainter(
+                    radius: 3,
+                    color: Colors.orange,
+                    strokeWidth: 2,
+                    strokeColor: Colors.white,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('${widget.name} (${widget.symbol}) Details')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (isLoading)
+              const Center(child: CircularProgressIndicator())
+            else ...[
+              Text(
+                "Current Price: \$${price.toStringAsFixed(2)}",
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                "24h Change: ${priceChange.toStringAsFixed(2)}%",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: priceChange >= 0 ? Colors.green : Colors.red,
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            const Text("Price Chart (24h)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            Expanded(child: _buildPriceChart()),
           ],
         ),
       ),
