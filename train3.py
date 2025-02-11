@@ -13,11 +13,12 @@ from models.orbit import Orbit
 from models.random_forest import RandomForest
 from models.xgboost import MyXGboost
 
-# File path to the combined dataset
-btc_data_path = os.path.join("data_loader", "Combined_BTC_Data.csv")
-
 # Function to load and preprocess the dataset
-def load_data(file_path, include_date_for_time_series=True):
+def load_data(coin, include_date_for_time_series=True):
+    # Define the file path based on the selected coin
+    file_path = os.path.join("data_loader", f"combined_{coin}_Data.csv")
+    
+    # Load the dataset
     df = pd.read_csv(file_path)
     
     # Ensure the 'Date' column is in datetime format
@@ -53,7 +54,10 @@ def prepare_data(df, look_back=5):
     return np.array(data)
 
 # Function to train model and predict future prices
-def train_and_predict_future_prices(model, model_name, df, look_back=5, future_intervals=[10, 180, 1440, 10080, 43200]):
+def train_and_predict_future_prices(model, model_name, coin, look_back=5, future_intervals=[10, 180, 1440, 10080, 43200]):
+    # Load the dataset for the selected coin
+    df = load_data(coin, include_date_for_time_series=False)
+    
     # Prepare the data for LSTM/GRU models
     data = prepare_data(df, look_back)
     
@@ -63,14 +67,14 @@ def train_and_predict_future_prices(model, model_name, df, look_back=5, future_i
     # Convert to DataFrame before passing to the model
     train_data_df = pd.DataFrame(train_data, columns=[f"feature_{i}" for i in range(train_data.shape[1] - 1)] + ['Price'])
     
-    print(f"\nTraining {model_name} model on the entire dataset...")
+    print(f"\nTraining {model_name} model for {coin} on the entire dataset...")
     model.fit(train_data_df)
 
     # Predict future prices
     predictions = {}
     
     for interval in future_intervals:
-        print(f"Making predictions for the next {interval} minutes...")
+        print(f"Making predictions for {coin} for the next {interval} minutes...")
         
         # Prepare the input for prediction: last `look_back` data
         last_window = df.iloc[-look_back:].values.flatten().tolist()
@@ -80,16 +84,17 @@ def train_and_predict_future_prices(model, model_name, df, look_back=5, future_i
         predictions[interval] = predicted_price
     
     # Save the predictions to a CSV file
-    output_file = os.path.join("models", f"{model_name}_BTC_Future_Predictions.csv")
+    output_file = os.path.join("models", f"{model_name}_{coin}_Future_Predictions.csv")
     predictions_df = pd.DataFrame(predictions.items(), columns=["Interval (minutes)", "Predicted Price"])
     predictions_df.to_csv(output_file, index=False)
-    print(f"Future predictions saved to {output_file}")
-
+    print(f"Future predictions for {coin} saved to {output_file}")
 
 if __name__ == "__main__":
-    # Load the dataset
-    df_orbit_prophet = load_data(btc_data_path, include_date_for_time_series=True)  # For Orbit and Prophet
-    df_other_models = load_data(btc_data_path, include_date_for_time_series=False)  # For LSTM, GRU, etc.
+    # Define the selected coin (e.g., "BTC", "ETH", "SOL")
+    selected_coin = "BTC"  # You can change this to "ETH" or "SOL" as needed
+
+    # Load the dataset for the selected coin
+    df_other_models = load_data(selected_coin, include_date_for_time_series=False)  # For LSTM, GRU, etc.
 
     # Define model parameters
     model_args = Namespace(
@@ -118,6 +123,6 @@ if __name__ == "__main__":
         # "XGBoost": MyXGboost(model_args),
     }
 
-    # Train and predict future prices with each model
+    # Train and predict future prices with each model for the selected coin
     for model_name, model in models.items():
-        train_and_predict_future_prices(model, model_name, df_other_models)
+        train_and_predict_future_prices(model, model_name, selected_coin)
